@@ -18,9 +18,8 @@ def main():
                 if not data:
                     print('Connection closed')
                     break
-                msg = "Hello, {}".format(str(data.decode().split()[-1]))
-                conn.sendall(msg.encode())
-
+                name = data.decode().split()[2]
+                conn.sendall("Hello, {}".format(name).encode())
 
 if __name__ == '__main__':
     main()
