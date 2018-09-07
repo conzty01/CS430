@@ -10,7 +10,7 @@ HOST = 'localhost'
 PORT = 4300
 
 
-def read_file(filename: str): # -> dict:
+def read_file(filename: str) -> dict:
     '''Read world territories and their capitals from the provided file'''
     world = dict()
     with open(filename,"r") as f:
@@ -20,7 +20,7 @@ def read_file(filename: str): # -> dict:
     return world
 
 
-def server(worldDict: dict): # -> None:
+def server(worldDict: dict) -> None:
     '''Main server loop'''
 
     with socket(AF_INET, SOCK_STREAM) as s:
@@ -37,7 +37,7 @@ def server(worldDict: dict): # -> None:
                 data = conn.recv(1024)
                 dataStr = data.decode()
 
-                print("User Query:".format(dataStr))
+                print("User Query: {}".format(dataStr))
 
                 if dataStr in worldDict.keys():
                     conn.sendall(worldDict[dataStr].encode())
