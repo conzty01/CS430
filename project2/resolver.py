@@ -41,7 +41,6 @@ def val_to_n_bytes(value: int, n_bytes: int) -> list:
 
     retList = []
     while len(retList) < n_bytes:
-        #print(bin(value))
         retList = [value & 0xFF] + retList    # Get the last 8 bits and add to the front of the list
         value = value >> 8
 
@@ -49,10 +48,11 @@ def val_to_n_bytes(value: int, n_bytes: int) -> list:
 # Done
 def bytes_to_val(bytes_lst: list) -> int:
     '''Merge 2 bytes into a value'''
-    if len(bytes_lst) == 1:
-        return bytes_lst[0]
+    res = 0
+    for num,pos in enumerate(range(len(bytes_lst),0,-1)):
+        res += bytes_lst[pos-1] << (8*num)
 
-    return (bytes_lst[0] << 8) + bytes_to_val(bytes_lst[1:])
+    return res
 # Done
 def get_2_bits(bytes_lst: list) -> int:
     '''Extract first two bits of a two-byte sequence'''
@@ -74,7 +74,10 @@ def parse_cli_query(filename, q_type, q_domain, q_server=None) -> tuple:
     if q_server == None:
         q_server = PUBLIC_DNS_SERVER[randint(0,len(PUBLIC_DNS_SERVER)-1)]
 
-    q_type = DNS_TYPES[q_type]
+    if q_type == "A" or q_type == "AAAA":
+        q_type = DNS_TYPES[q_type]
+    else:
+        raise ValueError("Unknown query type")
 
     return (q_type,q_domain.split("."),q_server)
 # Done
@@ -87,7 +90,7 @@ def format_query(q_type: int, q_domain: list) -> bytearray:
     transID = val_to_2_bytes(randint(0,0xFFFF))                     # [Transaction ID, ]
     flagBytes = val_to_2_bytes(256)                                 # [Flag bytes, ]
     qBytes = val_to_2_bytes(len(q_domain))                          # [# questions, ]
-    rrBytes = val_to_n_bytes(1,6)                                   # [RR bytes, , , , , ]
+    rrBytes = val_to_n_bytes(0,6)                                   # [RR bytes, , , , , ]
 
     domBytes = []                                                   # [Dom length, Dom bytes,etc*]
     for dom in q_domain:                                            # The number of domains CAN be more than 1
@@ -102,11 +105,8 @@ def format_query(q_type: int, q_domain: list) -> bytearray:
         domBytes.extend(val_to_2_bytes(q_type))                     # Type of domain lookup
         domBytes.extend(val_to_2_bytes(1))                          # Class of lookup (default to IN)
 
-    arBytes = val_to_2_bytes(0)
-    arBytes.extend([0x29,0x02])
-    arBytes.extend(val_to_n_bytes(0,7))
 
-    for bList in [transID,flagBytes,qBytes,rrBytes,domBytes,arBytes]:
+    for bList in [transID,flagBytes,qBytes,rrBytes,domBytes]:
         for item in bList:
             qa.append(item)
 
@@ -201,8 +201,6 @@ def parse_address_aaaa(addr_len: int, addr_bytes: bytes) -> str:
 
         if i % 2 != 0:
             retStr += ":"
-
-        #retStr = retStr.replace("0000","0")
 
     fin = ""    # Test program requires SPECIFIC output
     for part in retStr[:-1].split(":"):
