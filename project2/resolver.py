@@ -72,14 +72,16 @@ def parse_cli_query(filename, q_type, q_domain, q_server=None) -> tuple:
     '''Parse command-line query'''
 
     if q_server == None:
-        q_server = PUBLIC_DNS_SERVER[randint(0,len(PUBLIC_DNS_SERVER))]
+        q_server = PUBLIC_DNS_SERVER[randint(0,len(PUBLIC_DNS_SERVER)-1)]
 
     q_type = DNS_TYPES[q_type]
 
-    return (q_type,[q_domain],q_server)
+    return (q_type,q_domain.split("."),q_server)
 # Done
 def format_query(q_type: int, q_domain: list) -> bytearray:
     '''Format DNS query'''
+
+    q_domain = [q_domain[0]+"."+q_domain[1]]
 
     qa = bytearray()
     transID = val_to_2_bytes(randint(0,0xFFFF))                     # [Transaction ID, ]
@@ -118,7 +120,7 @@ def send_request(q_message: bytearray, q_server: str) -> bytes:
     client_sckt.close()
 
     return q_response
-
+# Done
 def traverse_dom(resp_bytes: bytes, offset: int) -> (str,int):
     domComp1 = resp_bytes[ offset + 1 : offset + resp_bytes[offset] + 1 ].decode()
     offset += resp_bytes[offset] + 1 # Move past domain to length of TLD
@@ -128,6 +130,7 @@ def traverse_dom(resp_bytes: bytes, offset: int) -> (str,int):
     dom = domComp1 + "." + domComp2
 
     return (dom,offset)
+# Done
 def parse_response(resp_bytes: bytes):
     '''Parse server response'''
     # We know the header will be 12 bytes and that the first 2 are the transaction ID,
@@ -144,7 +147,7 @@ def parse_response(resp_bytes: bytes):
     ans = parse_answers(resp_bytes,index,rr_ans)
 
     return ans
-
+# Done
 def parse_answers(resp_bytes: bytes, offset: int, rr_ans: int) -> list:
     '''Parse DNS server answers'''
 
@@ -199,9 +202,13 @@ def parse_address_aaaa(addr_len: int, addr_bytes: bytes) -> str:
         if i % 2 != 0:
             retStr += ":"
 
-    return retStr[:-1]
+        #retStr = retStr.replace("0000","0")
 
-    raise NotImplementedError
+    fin = ""    # Test program requires SPECIFIC output
+    for part in retStr[:-1].split(":"):
+        fin += hex(int(part,16))[2:] + ":"
+
+    return fin[:-1]
 # Done
 def resolve(query: str) -> None:
     '''Resolve the query'''
