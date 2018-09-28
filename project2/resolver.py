@@ -49,7 +49,10 @@ def val_to_n_bytes(value: int, n_bytes: int) -> list:
 # Done
 def bytes_to_val(bytes_lst: list) -> int:
     '''Merge 2 bytes into a value'''
-    return (bytes_lst[0] << 8) + bytes_lst[1]
+    if len(bytes_lst) == 1:
+        return bytes_lst[0]
+
+    return (bytes_lst[0] << 8) + bytes_to_val(bytes_lst[1:])
 # Done
 def get_2_bits(bytes_lst: list) -> int:
     '''Extract first two bits of a two-byte sequence'''
@@ -58,6 +61,12 @@ def get_2_bits(bytes_lst: list) -> int:
 def get_offset(bytes_lst: list) -> int:
     '''Extract size of the offset from a two-byte sequence'''
     return ((bytes_lst[0] & 0x3f) << 8) + bytes_lst[1]
+# Done
+def findIndexOfDomainName(bytes_lst: list) -> int:
+    '''This is just to rename the above function while
+        still maintaining the integrity of the tests
+        that were provided'''
+    return get_offset(bytes_lst)
 # Done
 def parse_cli_query(filename, q_type, q_domain, q_server=None) -> tuple:
     '''Parse command-line query'''
@@ -110,54 +119,62 @@ def send_request(q_message: bytearray, q_server: str) -> bytes:
 
     return q_response
 
-def parse_response(resp_bytes: bytes):
-    '''Parse server response'''
-    index = 12 # Prime the index to ignore the DNS header (Maybe not the best idea)
-    rr_ans = bytes_to_val(resp_bytes[6:8]) # Get the number of answers
-
-    # print(resp_bytes)
-    sansHeader = resp_bytes[index:]
-
-    # print(sansHeader)
-    # print(index, resp_bytes[index], resp_bytes[index+1])
-    domComp1 = resp_bytes[index:index+resp_bytes[index]+1].decode()
-    index += resp_bytes[index] + 1 # Move past domain to length of extension
-
-    # print(index, resp_bytes[index], resp_bytes[index+2])
-    domComp2 = resp_bytes[index:index+resp_bytes[index]+1].decode()
-    index += resp_bytes[index] + 1 # Move past extension
-
-    # print(index, resp_bytes[index], resp_bytes[index+5])
-    index += 5 # Move past buffer and additional RRs
+def traverse_dom(resp_bytes: bytes, offset: int) -> (str,int):
+    domComp1 = resp_bytes[ offset + 1 : offset + resp_bytes[offset] + 1 ].decode()
+    offset += resp_bytes[offset] + 1 # Move past domain to length of TLD
+    domComp2 = resp_bytes[ offset + 1 : offset + resp_bytes[offset] + 1 ].decode()
+    offset += resp_bytes[offset] # Move past TLD
 
     dom = domComp1 + "." + domComp2
 
+    return (dom,offset)
+def parse_response(resp_bytes: bytes):
+    '''Parse server response'''
+    # We know the header will be 12 bytes and that the first 2 are the transaction ID,
+    #  followed by the flags, # of queries, # of answers, # of authority records, #
+    #  of additional records.
+
+    rr_ans = bytes_to_val(resp_bytes[6:8]) # Get the number of answers
+    index = 12
+
+    _, index = traverse_dom(resp_bytes,index)
+
+    index += 6 # Move to start of response
+
     ans = parse_answers(resp_bytes,index,rr_ans)
-    for a in ans:
-        a.insert(0,dom)
 
     return ans
 
 def parse_answers(resp_bytes: bytes, offset: int, rr_ans: int) -> list:
     '''Parse DNS server answers'''
-    ans = []
 
-    offset += 2 # Skip past the label
-    if rr_ans > 0:
-        dnsType = bytes_to_val(resp_bytes[offset:offset+2])
-        offset += 4
-        ttl = bytes_to_val([bytes_to_val(resp_bytes[offset:offset+2]),bytes_to_val(resp_bytes[offset+2:offset+4])])
-        offset += 4
+    ans = []
+    for i in range(rr_ans):
+        if get_2_bits(resp_bytes[ offset : offset + 2 ]) == 3:                  # first 2 bits are '11'
+            domIndex = get_offset(resp_bytes[ offset : offset + 2 ])            # so we have a label pointing to domIndex
+
+            dom, _ = traverse_dom(resp_bytes,domIndex)
+
+        else:   # First 2 bits are not '11' meaning we need to traverse the domain name
+            dom, offset = traverse_dom(resp_bytes, offset)
+
+        offset += 2     # Skip to dnsType
+        dnsType = bytes_to_val(resp_bytes[ offset : offset + 2 ])
+        offset += 4     # Skip past class (Assumed IN for our purposes) to time to list
+        ttl = bytes_to_val(resp_bytes[ offset : offset + 4])
+        offset += 4     # Move to IP Address length
         ipLen = bytes_to_val(resp_bytes[offset:offset+2])
+        offset += 2     # Move to beginning of IP
 
         if dnsType == DNS_TYPES["A"]:
-            addr = parse_address_a(ipLen, resp_bytes[offset+2:])
+            addr = parse_address_a(ipLen, resp_bytes[offset:])
         else:
-            addr = parse_address_aaaa(ipLen, resp_bytes[offset+2:])
+            addr = parse_address_aaaa(ipLen, resp_bytes[offset:])
 
-        return [[ttl,addr]]
+        offset += ipLen # In case we have mulitple answers
+        ans.append((dom,ttl,addr))
 
-    return []
+    return ans
 # Done
 def parse_address_a(addr_len: int, addr_bytes: bytes) -> str:
     '''Extract IPv4 address'''
