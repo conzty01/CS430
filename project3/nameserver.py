@@ -30,34 +30,81 @@ TTL_SEC = {
     '1y': 60*60*24*365
     }
 
-
+# Done
 def val_to_bytes(value: int, n_bytes: int) -> list:
     '''Split a value into n bytes'''
-    raise NotImplementedError
 
+    retList = []
+    while len(retList) < n_bytes:
+        retList = [value & 0xFF] + retList    # Get the last 8 bits and add to the front of the list
+        value = value >> 8
 
+    return retList
+
+# Done
 def bytes_to_val(bytes_lst: list) -> int:
-    '''Merge n bytes into a value'''
-    raise NotImplementedError
+    '''Merge 2 bytes into a value'''
+    res = 0
+    for num,pos in enumerate(range(len(bytes_lst),0,-1)):
+        res += bytes_lst[pos-1] << (8*num)
 
+    return res
 
+# Done
 def get_left_bits(bytes_lst: list, n_bits: int) -> int:
     '''Extract left n bits of a two-byte sequence'''
-    raise NotImplementedError
+    num = bytes_to_val(bytes_lst)
+    return num >> (len(bin(num)[2:])-n_bits)
 
-
+# Done
 def get_right_bits(bytes_lst: list, n_bits) -> int:
-    '''Extract right n bits bits of a two-byte sequence'''
-    raise NotImplementedError
+    '''Extract right n bits of a two-byte sequence'''
+    num = bytes_to_val(bytes_lst)
+    byteStr = ""
+    for i in range(n_bits):
+        byteStr += "1"
+    return num & bytes_to_val([int(bytes(byteStr,"utf8"),2)])
 
-
+# Done
 def read_zone_file(filename: str) -> tuple:
     '''Read the zone file and build a dictionary'''
     zone = dict()
     with open(filename) as zone_file:
         origin = zone_file.readline().split()[1].rstrip('.')
-        raise NotImplementedError
-    
+        defaultTTL = zone_file.readline().split()[1]
+
+        line = zone_file.readline()
+        dom = ""
+        while line != "":
+            sl = line.split()
+            if "1" not in sl[0]:        # Either new domain or old domain and no ttl
+                if "I" not in sl[0]:    # New domain name
+                    dom = sl[0]         # Reassign dom
+                    zone[dom] = []      # Set dom in dict
+                    if "1" in sl[1]:    # All items are present
+                        ttl = sl[1]     # Assign all items
+                        c = sl[2]
+                        ty = sl[3]
+                        addr = sl[4]
+                    else:               # ttl not present
+                        ttl = defaultTTL
+                        c = sl[1]       # Assign all other items
+                        ty = sl[2]
+                        addr = sl[3]
+                else:                   # Old domain and no ttl
+                    ttl = defaultTTL
+                    c = sl[0]
+                    ty = sl[1]
+                    addr = sl[2]
+            else:                       # Old domain and we have a ttl
+                ttl = sl[0]
+                c = sl[1]
+                ty = sl[2]
+                addr = sl[3]
+
+            zone[dom].append((ttl,c,ty,addr))
+            line = zone_file.readline()
+
     return (origin, zone)
 
 
