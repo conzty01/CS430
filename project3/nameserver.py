@@ -107,17 +107,81 @@ def read_zone_file(filename: str) -> tuple:
 
     return (origin, zone)
 
+# Done
+def traverse_dom(resp_bytes: bytes, offset: int) -> (str,int):
+    dom = ""
+    while bytes_to_val(resp_bytes[offset:offset+1]) != 0:
+        domComp = resp_bytes[ offset + 1 : offset + resp_bytes[offset] + 1 ].decode()
+        offset += resp_bytes[offset] + 1
+        dom += domComp + "."
 
+    dom = dom.rstrip(".")
+
+    return (dom,offset)
+
+# Done
 def parse_request(origin: str, msg_req: bytes) -> tuple:
     '''Parse the request'''
-    raise NotImplementedError
+    transID = bytes_to_val(msg_req[:2])                         # Increment the Transaction ID
+    index = 12                                                  # Skip to the query
+    q = msg_req[12:]                                            # Query is the entire message sans header
+    fullDom, index = traverse_dom(msg_req, index)
 
+    if fullDom[fullDom.index(".")+1:] != origin:
+        raise ValueError("Unknown zone")
 
+    queryDom = fullDom.split(".")[0]
+
+    if bytes_to_val(msg_req[-4:-2]) not in (1,28):
+        raise ValueError("Unknown query type")
+    else:
+        q_type = bytes_to_val(q[-4:-2])                         # Get the DNS type
+        index += 2
+
+    if bytes_to_val(msg_req[-2:]) != 1:
+        raise ValueError("Unknown class")
+
+    return (transID,queryDom,q_type,q)
+
+# Done
 def format_response(zone: dict, trans_id: int, qry_name: str, qry_type: int, qry: bytearray) -> bytearray:
     '''Format the response'''
-    raise NotImplementedError
 
+    zoneInfo = zone[qry_name]                           # Get the zone information
+    ans = []
+    for i in zoneInfo:
+        if i[2] == DNS_TYPES[qry_type]:                 # If an entry is of the same DNS type
+            ans.append(i)                               # Add it to the answers
 
+    resp = bytearray()
+    resp.extend(val_to_bytes(trans_id,2))               # Add Transaction ID
+    resp.extend([0x81,0x00])                            # Add Flags
+    resp.extend(val_to_bytes(1,2))                      # Add number of questions
+    resp.extend(val_to_bytes(len(ans),2))               # Add number of answers
+    resp.extend(val_to_bytes(0,4))                      # Add number of additional/authority records
+    resp += qry                                         # Add the query
+
+    for aTup in ans:
+        resp.extend([0xc0,0x0c])                        # Add label for domain name
+        resp.extend(val_to_bytes(qry_type,2))           # Add query type
+        resp.extend(val_to_bytes(1,2))                  # Add query class
+        resp.extend(val_to_bytes(TTL_SEC[aTup[0]],4))   # Add time to live
+
+        if qry_type == 1:                               # If type 'A'
+            addrPts = aTup[3].split(".")
+            resp.extend(val_to_bytes(len(addrPts),2))   # Add length of address
+            for pt in addrPts:
+                resp.append(int(pt))                    # Add part of address
+
+        else:                                           # If type 'AAAA'
+            addrPts = aTup[3].split(":")
+            resp.extend(val_to_bytes(len(addrPts)*2,2)) # Add length of address (each part is made up of 2 bytes)
+            for pt in addrPts:
+                resp.extend(val_to_bytes(int(pt,16),2)) # Add part of address
+
+    return resp
+
+# Done
 def run(filename: str) -> None:
     '''Main server loop'''
     server_sckt = socket(AF_INET, SOCK_DGRAM)
@@ -133,9 +197,11 @@ def run(filename: str) -> None:
             server_sckt.sendto(msg_resp, client_addr)
         except ValueError as ve:
             print('Ignoring the request: {}'.format(ve))
+        except KeyError as ke:
+            print('Ignoring the request: {} not in zone.'.format(ke))
     server_sckt.close()
 
-
+# Done
 def main(*argv):
     '''Main function'''
     if len(argv[0]) != 2:
