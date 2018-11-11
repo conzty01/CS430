@@ -24,7 +24,7 @@ def main():
         with conn:
             data = conn.recv(1024)
             dataStr = data.decode()
-            lines = dataStr.split("\n")
+            lines = dataStr.split("\r\n")
 
             print("  Parsing Request")
 
