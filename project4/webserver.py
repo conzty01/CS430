@@ -49,24 +49,23 @@ def main():
 
             print("  Parsing Complete")
 
-            print("  Checking Request")
+            print("  Logging Request")
+            writeToLog(reqDict["Time"],reqDict["ReqFile"],addr[0],reqDict["User-Agent"])
+
             # Method Not Allowed
             if reqDict["Method"] != "GET":
                 print("    Invalid Method:- "+reqDict["Method"])
-                conn.send("HTTP/1.1 405 Method Not Allowed\r\n".encode())
+                conn.send("HTTP/1.1 405 Method Not Allowed\r\n\r\n".encode())
                 conn.send("<html><head></head><body><h1>405 Method Not Allowed</h1></body></html>".encode())
 
             # File Not Found
             elif reqDict["ReqFile"] != "/alice30.txt":
                 print("    File Not Found:- "+reqDict["ReqFile"])
-                conn.send("HTTP/1.1 404 Not Found\r\n".encode())
+                conn.send("HTTP/1.1 404 Not Found\r\n\r\n".encode())
                 conn.send("<html><head></head><body><h1>404 Not Found</h1></body></html>".encode())
 
             # Fulfill Request
             else:
-                print("  Logging Request")
-                writeToLog(reqDict["Time"],reqDict["ReqFile"],addr[0],reqDict["User-Agent"])
-
                 print("  Responding")
 
                 print("    Creating Header")
