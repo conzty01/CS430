@@ -55,6 +55,15 @@ def checksum(pkt: bytes) -> int:
     return result
 
 
+def bytes_to_val(bytes_lst: list) -> int:
+    '''Merge 2 bytes into a value'''
+    res = 0
+    for num,pos in enumerate(range(len(bytes_lst),0,-1)):
+        res += bytes_lst[pos-1] << (8*num)
+
+    return res
+
+
 def parse_reply(
     my_socket: socket.socket, req_id: int, timeout: int, addr_dst: str
 ) -> tuple:
@@ -71,8 +80,17 @@ def parse_reply(
         pkt_rcvd, addr = my_socket.recvfrom(1024)
         if addr[0] != addr_dst:
             raise ValueError(f"Wrong sender: {addr[0]}")
-        # TODO: Extract ICMP header from the IP packet and parse it
-        # print_raw_bytes(pkt_rcvd)
+
+        # Extract ICMP header from the IP packet and parse it
+        #print_raw_bytes(pkt_rcvd)
+
+        if pkt_rcvd[20] != 0:
+            raise ValueError(f"Invalid Ping Type: {pkt_rcvd[20]}")
+        else:
+            length = bytes_to_val(pkt_rcvd[2:4])
+            ttl = pkt_rcvd[8]
+            return (length,ttl)
+
         # DONE: End of ICMP parsing
         time_left = time_left - how_long_in_select
         if time_left <= 0:
@@ -122,6 +140,36 @@ def send_request(addr_dst: str, seq_num: int, timeout: int = 1) -> tuple:
 def ping(host: str, pkts: int, timeout: int = 1) -> None:
     """Main loop"""
     # TODO: Implement the main loop
+
+    ip = socket.gethostbyname(host)
+    print(f"\n--- Ping {host} ({ip}) using Python ---\n")
+
+    numTrans = 0
+    numRec = 0
+    for req_id in range(pkts):
+        seq_id = (req_id + 1) * 0x01
+        reqBytes = format_request(req_id, seq_id)
+
+        try:
+            numTrans += 1
+            startTime = time.time()
+            length, ttl = send_request(ip, seq_id, timeout)
+            timePassed = time.time() - startTime
+            numRec += 1
+
+            print(f"{length} bytes from {ip}: icmp_seq={req_id+1} TTL={ttl} time={(timePassed*1000):.2f} ms")
+
+        except TimeoutError:
+            print(f"No response: Request timed out after {timeout} sec")
+
+    print(f"\n--- {host} ping statistics ---")
+
+    if numRec == 0:
+        percent = 100
+    else:
+        percent = (numTrans - numRec) / numTrans
+
+    print(f"{numTrans} packets transmitted, {numRec} recevied, {percent:.2f}% packet loss")
 
     # DONE
     return
