@@ -1,4 +1,4 @@
-"""Python Pinger"""
+"""Python Traceroute"""
 #!/usr/bin/env python3
 # encoding: UTF-8
 
@@ -11,6 +11,9 @@ import time
 import socket
 from statistics import mean, stdev
 
+MAX_HOPS = 30
+TIMEOUT = 1
+ATTEMPTS = 3
 ECHO_REQUEST_TYPE = 8
 ECHO_REPLY_TYPE = 0
 ECHO_REQUEST_CODE = 0
@@ -62,6 +65,7 @@ def bytes_to_val(bytes_lst: list) -> int:
         res += bytes_lst[pos-1] << (8*num)
 
     return res
+
 
 
 def parse_reply(
@@ -118,11 +122,13 @@ def format_request(req_id: int, seq_num: int) -> bytes:
     return packet
 
 
-def send_request(addr_dst: str, seq_num: int, timeout: int = 1) -> tuple:
+def send_request(addr_dst: str, seq_num: int, ttl: int, timeout: int = 1) -> tuple:
+
     """Send an Echo Request"""
     result = None
     proto = socket.getprotobyname("icmp")
     my_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, proto)
+    my_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, struct.pack("I", ttl))
     my_id = os.getpid() & 0xFFFF
 
     packet = format_request(my_id, seq_num)
@@ -139,7 +145,37 @@ def send_request(addr_dst: str, seq_num: int, timeout: int = 1) -> tuple:
 
 def ping(host: str, pkts: int, timeout: int = 1) -> None:
     """Main loop"""
-    # TODO: Implement the main loop
+
+    ip = socket.gethostbyname(host)
+    print(f"\n--- Ping {host} ({ip}) using Python ---\n")
+
+    numTrans = 0
+    numRec = 0
+    for req_id in range(pkts):
+        seq_id = (req_id + 1) * 0x01
+
+        try:
+            numTrans += 1
+            startTime = time.time()
+            length, ttl = send_request(ip, seq_id, timeout)
+            timePassed = time.time() - startTime
+            numRec += 1
+
+
+
+            print(f"{length} bytes from {ip}: icmp_seq={req_id+1} TTL={ttl} time={(timePassed*1000):.2f} ms")
+
+        except TimeoutError:
+            print(f"No response: Request timed out after {timeout} sec")
+
+    print(f"\n--- {host} ping statistics ---")
+
+    if numRec == 0:
+        percent = 100
+    else:
+        percent = (numTrans - numRec) / numTrans
+
+    print(f"{numTrans} packets transmitted, {numRec} recevied, {percent:.2f}% packet loss")
 
     ip = socket.gethostbyname(host)
     print(f"\n--- Ping {host} ({ip}) using Python ---\n")
@@ -175,6 +211,47 @@ def ping(host: str, pkts: int, timeout: int = 1) -> None:
     return
 
 
+def traceroute(host: str, numAttempts: int, maxHops: int, timeout: int) -> None:
+    ip = socket.gethostbyname(host)
+    print(f"Tracing route to {host} [{ip}]\n over a maximum of {maxHops} hops:")
+
+    ttl = 1
+    done = False
+    while not done and ttl < 31:
+
+        hopRes = []
+        for req_id in range(numAttempts):
+            seq_id = (req_id + 1) * 0x01
+
+            try:
+                startTime = time.time()
+                done, reply_addr = send_request(ip, seq_id, ttl, timeout)
+                timePassed = time.time() - startTime
+                hopRes.append((reply_addr,str(int(timePassed*1000))))
+
+            except TimeoutError:
+                hopRes.append(("Request timed out.","*"))
+
+        print('{:>3}{:>5} ms{:>5} ms{:>5} ms  {}'.format(ttl,hopRes[0][1],hopRes[1][1],hopRes[2][1],hopRes[0][0]))
+        ttl += 1
+
+def main(destination):
+    traceroute(destination,ATTEMPTS,MAX_HOPS,TIMEOUT)
+
 if __name__ == "__main__":
-    for rir in REGISTRARS:
-        ping(rir, 5)
+    main(sys.argv[-1])
+
+#
+# items = self.items + [item]
+# items.sort()
+# children = []
+# itemIndex = items.indexOf(item)
+#
+# children.append(self.child[0])
+# j = 1
+# for i in range(2*btree.degree+1):
+#    if i == itemIndex + 1:
+#        children.append(_right_)
+#    else:
+#        children.append(self.child[j])
+#    j += 1
